@@ -12,8 +12,6 @@ const hf = new HfInference(process.env.HF_API_TOKEN);
 app.use(express.json());
 app.use(cors({ origin: 'http://localhost:3000' }));
 
-const supportedIntents = ['summarize','extract','email'];
-
 app.post('/api/task',upload.single('file'),async(req,res)=>{
     const { task } = req.body;
     const file = req.file;
@@ -21,17 +19,28 @@ app.post('/api/task',upload.single('file'),async(req,res)=>{
     if (!task) return res.status(400).json({ error: 'Task is required' });
 
     // Step 1: NLP Intent Detection
+
+    const intents = ['summarize','extract','email','create chart'];
     try{
-      const nlpResult = await hf.textClassification({
-        model: 'distilbert-base-uncased-finetuned-sst-2-english',
+      const classification = await hf.zeroShotClassification({
+        model: 'facebook/bart-large-mnli',
         inputs: task,
+        parameters: {
+          candidate_labels: intents, // Explicitly pass as parameters object
+        },
       })
 
-      //For now, keyword-based fallback
-      const intent = supportedIntents.find(i => task.toLowerCase().includes(i)) || 'unknown';
-        
+      //Get the intent with the highest score
+      const intentScores = classification.labels?.map((label,idx)=>({
+        intent: label,
+        score: classification.scores[idx],
+      }));
+      
+      const topIntent = intentScores?.sort((a,b)=> b.score - a.score)[0];
+      const intent = topIntent?.score > 0.4 ? topIntent.score : 'unknown';
+
       if (intent === 'unknown') {
-         return res.status(400).json({ error: `Intent not recognized. Supported: ${supportedIntents.join(', ')}` });
+         return res.status(400).json({ error: `Intent not recognized. Supported: ${intents.join(', ')}` });
         }
 
       // Step 2: Process File (if provided)
@@ -59,10 +68,13 @@ app.post('/api/task',upload.single('file'),async(req,res)=>{
         case 'email':
           result = 'Emailing not implemented yet';
           break;
+        case 'create chart':
+          result = 'Chart creation not implemented yet';
+          break;
         default:
           result = 'Action Not supported';
       }
-      res.json({result});
+      res.json({result,detectedIntent: intent});
     }
       catch (error) {
       console.error('Processing Error:', error);

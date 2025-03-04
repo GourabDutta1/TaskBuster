@@ -5,6 +5,7 @@ function App() {
   const [task, setTask] = useState('');
   const [file, setFile] = useState(null);
   const [result, setResult] = useState('');
+  const [intent, setIntent] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -15,9 +16,11 @@ function App() {
     try {
       const response = await axios.post('http://localhost:5000/api/task', formData);
       setResult(response.data.result);
+      setIntent(response.data.detectedIntent);
     } catch (error) {
       console.error('Error:', error.response?.data);
       setResult(error.response?.data?.error || 'Something went wrong!');
+      setIntent('');
     }
   };
 
@@ -46,6 +49,7 @@ function App() {
         </form>
         {result && (
           <div className="mt-4 p-4 bg-gray-50 rounded">
+            <h2 className="font-semibold">Detected Intent: {intent || 'N/A'}</h2>
             <h2 className="font-semibold">Result:</h2>
             <p>{result}</p>
           </div>
