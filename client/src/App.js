@@ -16,8 +16,8 @@ function App() {
       const response = await axios.post('http://localhost:5000/api/task', formData);
       setResult(response.data.result);
     } catch (error) {
-      console.error('Error:', error);
-      setResult('Something went wrong!');
+      console.error('Error:', error.response?.data);
+      setResult(error.response?.data?.error || 'Something went wrong!');
     }
   };
 
