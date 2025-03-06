@@ -2,6 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const cors = require('cors');
 const {HfInference}=require('@huggingface/inference')
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
@@ -11,6 +12,15 @@ const hf = new HfInference(process.env.HF_API_TOKEN);
 
 app.use(express.json());
 app.use(cors({ origin: 'http://localhost:3000' }));
+
+// Email Configuration
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_PASSWORD,
+  },
+});
 
 app.post('/api/task',upload.single('file'),async(req,res)=>{
     const { task } = req.body;
@@ -34,10 +44,25 @@ app.post('/api/task',upload.single('file'),async(req,res)=>{
       const intentScores = classification.labels?.map((label,idx)=>({
         intent: label,
         score: classification.scores[idx],
-      }));
+      })) || [];
+      console.log('Intent Scores', intentScores);
       
       const topIntent = intentScores?.sort((a,b)=> b.score - a.score)[0];
-      const intent = topIntent?.score > 0.4 ? topIntent.score : 'unknown';
+      let intent = topIntent?.score > 0.4 ? topIntent.intent : 'unknown';
+
+      // Fallback: Keyword-based check if confidence is low
+    if (intent === 'unknown') {
+      const taskLower = task.toLowerCase();
+      if (taskLower.includes('summarize') || taskLower.includes('summary')) {
+        intent = 'summarize';
+      } else if (taskLower.includes('extract') || taskLower.includes('data')) {
+        intent = 'extract';
+      } else if (taskLower.includes('email') || taskLower.includes('send')) {
+        intent = 'email';
+      } else if (taskLower.includes('chart') || taskLower.includes('visualize')) {
+        intent = 'create chart';
+      }
+    }
 
       if (intent === 'unknown') {
          return res.status(400).json({ error: `Intent not recognized. Supported: ${intents.join(', ')}` });
@@ -66,7 +91,24 @@ app.post('/api/task',upload.single('file'),async(req,res)=>{
           result = 'Extraction not implemented yet';
           break;
         case 'email':
-          result = 'Emailing not implemented yet';
+          if(!file){
+            result = 'Please upload a file to email';
+          }
+          else{
+            const summaryForEmail = await hf.summarization({
+              model:'facebook/bart-large-cnn',
+              inputs: textToProcess,
+              parameters: { max_length: 100 },
+            });
+            const emailOptions ={
+              from: process.env.GMAIL_USER,
+              to: 'gourabdutta.smart56@gmail.com',
+              subject: 'TaskBuster Summary',
+              text: summaryForEmail.summary_text,
+            };
+            const info = await transporter.sendMail(emailOptions);
+            result = 'Email Sent successfully';
+          }
           break;
         case 'create chart':
           result = 'Chart creation not implemented yet';
